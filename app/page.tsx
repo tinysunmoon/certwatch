@@ -134,14 +134,18 @@ export default function Home() {
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Add Domain</h2>
           <form onSubmit={handleAdd} className="space-y-3">
             <div className="flex gap-3">
-              <input
-                type="text"
-                value={newDomain}
-                onChange={(e) => setNewDomain(e.target.value)}
-                placeholder="Domain (e.g. example.com)"
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={adding}
-              />
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Domain <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newDomain}
+                  onChange={(e) => setNewDomain(e.target.value)}
+                  placeholder="e.g. example.com"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={adding}
+                  required
+                />
+              </div>
               <button
                 type="submit"
                 disabled={adding || !newDomain.trim() || !validFrom || !expiryDate || !alertEmail.trim()}
@@ -152,7 +156,7 @@ export default function Home() {
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Valid From</label>
+                <label className="block text-xs text-gray-500 mb-1">Valid From <span className="text-red-500">*</span></label>
                 <input
                   type="date"
                   value={validFrom}
@@ -163,7 +167,7 @@ export default function Home() {
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Expiry Date</label>
+                <label className="block text-xs text-gray-500 mb-1">Expiry Date <span className="text-red-500">*</span></label>
                 <input
                   type="date"
                   value={expiryDate}
@@ -174,7 +178,7 @@ export default function Home() {
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Alert Email</label>
+                <label className="block text-xs text-gray-500 mb-1">Alert Email <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   value={alertEmail}
