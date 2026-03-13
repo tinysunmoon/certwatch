@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getCertExpiry } from '@/lib/cert';
+import { shouldAlert, sendAlertEmail } from '@/lib/email';
 
 export async function GET() {
   const { data, error } = await supabase
@@ -43,5 +44,11 @@ export async function POST(req: NextRequest) {
   }).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Immediately alert if cert is already at or below a threshold
+  if (expiryDate && daysRemaining !== null && shouldAlert(daysRemaining)) {
+    await sendAlertEmail(domain, expiryDate, daysRemaining);
+  }
+
   return NextResponse.json(data);
 }
