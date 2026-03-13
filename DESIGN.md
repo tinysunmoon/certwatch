@@ -2,7 +2,7 @@
 
 ## Overview
 
-CertWatch is a personal SSL certificate monitoring tool. It tracks domains, displays their certificate expiry status on a dashboard, and sends email alerts before certificates expire — so you can request renewal from the responsible team in time.
+CertWatch is a shared SSL certificate monitoring tool. Multiple users can track their domains, view expiry status on a dashboard, and each receive their own alert emails before certificates expire — so they can request renewal from the responsible team in time.
 
 ---
 
@@ -12,7 +12,7 @@ CertWatch is a personal SSL certificate monitoring tool. It tracks domains, disp
 |-------|-----------|---------|
 | Frontend + Backend | Next.js 14 (App Router, TypeScript) | Web app and API routes |
 | Database | Supabase (PostgreSQL) | Stores domain records |
-| Email | Resend | Sends alert emails |
+| Email | Resend | Sends per-domain alert emails |
 | Scheduler | Vercel Cron | Runs daily cert checks at 8:00 AM |
 | Hosting | Vercel | Deployment and cron execution |
 
@@ -37,7 +37,7 @@ certwatch/
 │       ├── domains/
 │       │   ├── route.ts          # GET all domains, POST add domain
 │       │   └── [id]/
-│       │       └── route.ts      # DELETE a domain
+│       │       └── route.ts      # PATCH edit domain, DELETE domain
 │       └── check/
 │           └── route.ts          # Re-check all certs + send alerts
 ├── lib/
@@ -61,13 +61,17 @@ certwatch/
 |--------|------|-------------|
 | `id` | uuid | Primary key, auto-generated |
 | `domain` | text | Domain name, e.g. `example.com` |
-| `valid_from` | date | SSL cert start date (optional, manually entered or null) |
-| `expiry_date` | date | SSL cert expiry date |
+| `valid_from` | date | SSL cert start date, manually entered |
+| `expiry_date` | date | SSL cert expiry date, manually entered |
 | `days_remaining` | int | Days until expiry, recalculated on each check |
 | `last_checked` | timestamp | When the cert was last checked |
+| `alert_email` | text | Email address to notify for this domain |
+| `renewal_requested` | boolean | Whether renewal has been requested (default: false) |
+| `notes` | text | Free-text notes, e.g. owner team, ticket number |
+| `check_error` | text | Last TLS check error message, null if healthy |
 | `created_at` | timestamp | When the domain was added |
 
-**Setup SQL:**
+**Full setup SQL:**
 ```sql
 create table domains (
   id uuid primary key default gen_random_uuid(),
@@ -76,11 +80,12 @@ create table domains (
   expiry_date date,
   days_remaining int,
   last_checked timestamp with time zone,
+  alert_email text,
+  renewal_requested boolean default false,
+  notes text,
+  check_error text,
   created_at timestamp with time zone default now()
 );
-
--- Add valid_from if upgrading from initial schema:
-alter table domains add column if not exists valid_from date;
 ```
 
 ---
@@ -94,24 +99,38 @@ Stored in `.env.local` (never committed to git). Must also be added to Vercel pr
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key |
 | `RESEND_API_KEY` | Resend API key for sending emails |
-| `ALERT_EMAIL` | Email address to send alerts to (`tinysunmoon@gmail.com`) |
+
+> Note: There is no global `ALERT_EMAIL`. Every domain must have its own `alert_email` set at the time of adding.
 
 ---
 
 ## Features
 
-### 1. Dashboard (`app/page.tsx`)
+### 1. Summary Stats
 
-The home page. Loads all tracked domains from the API and displays them in a table.
+Four clickable cards at the top of the dashboard showing counts per status:
+- 🔴 Critical, 🟡 Warning, 🟢 Safe, ⚫ Expired
+- Clicking a card filters the table to show only that status
+- Clicking again clears the filter
 
-**Columns:**
-- Domain name
-- Valid From (cert start date)
-- Expiry Date
-- Days Left
-- Status badge
-- Last Checked
-- Remove button
+---
+
+### 2. Dashboard Table (`app/page.tsx`)
+
+Displays all tracked domains with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| Domain | Domain name + TLS check error if any |
+| Valid From | Cert start date |
+| Expiry Date | Cert expiry date |
+| Days Left | Days until expiry |
+| Status | Color-coded badge |
+| Renewal | Toggle button — "Not yet" or "✓ Requested" |
+| Alert Email | Per-domain notification email |
+| Notes | Free-text notes (truncated, full text on hover) |
+| Last Checked | When the cert was last checked |
+| Actions | Edit / Remove |
 
 **Status badge logic:**
 
@@ -121,48 +140,72 @@ The home page. Loads all tracked domains from the API and displays them in a tab
 | 14–30 days | 🟡 Warning |
 | < 14 days | 🔴 Critical |
 | < 0 (expired) | ⚫ Expired |
-| Unknown | Grey — Unknown |
+| null | Grey — Unknown |
 
-**Actions:**
-- **Add Domain** — form at top of page with domain name + optional date fields
-- **Check Now** — button in table header, re-checks all certs immediately
-- **Remove** — per-row delete with inline confirmation (no modal)
+**Sortable columns:** Domain, Expiry Date, Days Left — click header to sort ascending/descending.
+
+**TLS check error:** If the last Check Now failed for a domain, an orange warning is shown under the domain name. Existing expiry data is preserved.
 
 ---
 
-### 2. Add Domain Form
+### 3. Add Domain Form
 
-Fields:
-- **Domain** (required) — text input, e.g. `example.com`
-- **Valid From** (optional) — date picker; leave blank to auto-fetch
-- **Expiry Date** (optional) — date picker; leave blank to auto-fetch
+All fields are required (marked with red `*`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Domain | Text | e.g. `example.com` |
+| Valid From | Date picker | SSL cert start date |
+| Expiry Date | Date picker | SSL cert expiry date |
+| Alert Email | Email | Who receives alerts for this domain |
+| Notes | Text | Optional free-text (e.g. owner, ticket number) |
 
 **Behaviour:**
-- If Expiry Date is left blank → the app opens a TLS connection to the domain and reads the cert automatically
-- If Expiry Date is entered manually → no TLS fetch; manual values are used directly (useful for internal/private domains)
-- After saving, if the cert is already at or below a threshold, an alert email is sent immediately
+- Duplicate detection — returns an error if the domain is already tracked
+- `days_remaining` is calculated from `expiry_date` on submit
+- If the cert is already at or below an alert threshold, an email is sent immediately
 
 ---
 
-### 3. Delete Domain
+### 4. Inline Edit
+
+- Each row has an **Edit** button
+- Clicking it turns that row into inline inputs for: Valid From, Expiry Date, Alert Email, Notes
+- **Save** updates the record; `days_remaining` is recalculated from the new expiry date
+- **Cancel** discards changes
+
+---
+
+### 5. Renewal Toggle
+
+- Each row has a **Renewal** button
+- Clicking toggles `renewal_requested` between `false` ("Not yet") and `true` ("✓ Requested")
+- No confirmation needed — instant toggle
+- Useful for tracking which certs you've already raised with the responsible team
+
+---
+
+### 6. Delete Domain
 
 - Each row has a **Remove** link
-- Clicking it shows inline **Confirm / Cancel** without a modal
+- Clicking shows inline **Confirm / Cancel** — no modal
 - Confirmed deletion removes the row from Supabase and refreshes the dashboard
 
 ---
 
-### 4. Check Now (Manual Re-check)
+### 7. Check Now (Manual Re-check)
 
+- Button in the dashboard header
 - Calls `POST /api/check`
-- Re-fetches SSL cert for every tracked domain via TLS
-- Updates `expiry_date`, `days_remaining`, `last_checked` in Supabase
+- Attempts TLS connection for every tracked domain (with up to 2 retries)
+- On success: updates `expiry_date`, `days_remaining`, `last_checked`, clears `check_error`
+- On failure: records error in `check_error`, preserves existing expiry data
 - Sends alert emails if a domain hits an exact threshold (30, 14, or 7 days)
 - Dashboard refreshes automatically after completion
 
 ---
 
-### 5. Auto Daily Check (Vercel Cron)
+### 8. Auto Daily Check (Vercel Cron)
 
 Configured in `vercel.json`:
 ```json
@@ -177,8 +220,16 @@ Configured in `vercel.json`:
 ```
 
 - Runs every day at **8:00 AM UTC**
-- Calls the same `GET /api/check` endpoint as the manual check
+- Same logic as Check Now
 - No user action required
+
+---
+
+### 9. Export CSV
+
+- Button in the dashboard header
+- Downloads all currently displayed domains as `certwatch-export.csv`
+- Columns: Domain, Valid From, Expiry Date, Days Left, Status, Renewal Requested, Alert Email, Notes, Last Checked
 
 ---
 
@@ -192,24 +243,47 @@ Returns all tracked domains ordered by `created_at` descending.
 ---
 
 ### `POST /api/domains`
-Adds a new domain.
+Adds a new domain. All fields are required.
 
 **Request body:**
 ```json
 {
   "domain": "example.com",
-  "valid_from": "2025-01-01",   // optional
-  "expiry_date": "2026-01-01"   // optional
+  "valid_from": "2025-01-01",
+  "expiry_date": "2026-01-01",
+  "alert_email": "owner@example.com",
+  "notes": "Infra team — Jira INF-123"
 }
 ```
 
 **Logic:**
-1. If `expiry_date` is provided → calculate `days_remaining` from it
-2. If not → open TLS connection to domain, read cert, extract expiry
-3. Insert record into Supabase
-4. If `days_remaining` triggers an alert → send email immediately
+1. Validate all required fields are present
+2. Check for duplicate — return 409 if domain already exists
+3. Calculate `days_remaining` from `expiry_date`
+4. Insert into Supabase
+5. If `days_remaining` triggers `shouldAlert()` → send email immediately
 
 **Response:** The newly created `Domain` object.
+
+---
+
+### `PATCH /api/domains/[id]`
+Updates one or more fields on a domain.
+
+**Request body** (all fields optional):
+```json
+{
+  "valid_from": "2025-01-01",
+  "expiry_date": "2026-06-01",
+  "alert_email": "new@example.com",
+  "renewal_requested": true,
+  "notes": "Updated ticket: INF-456"
+}
+```
+
+**Logic:** Recalculates `days_remaining` if `expiry_date` is updated.
+
+**Response:** The updated `Domain` object.
 
 ---
 
@@ -224,9 +298,10 @@ Deletes a domain by its UUID.
 Re-checks all domains and sends alerts.
 
 **Logic (per domain):**
-1. Open TLS connection, read cert expiry
-2. Update `expiry_date`, `days_remaining`, `last_checked` in Supabase
-3. If `days_remaining` is exactly 30, 14, or 7 → send alert email
+1. Attempt TLS connection — retry up to 2 times on failure
+2. **On success:** update `expiry_date`, `days_remaining`, `last_checked`, clear `check_error`
+3. **On failure:** update `last_checked` and `check_error`, keep existing expiry data
+4. If `days_remaining` is exactly 30, 14, or 7 → send alert to `domain.alert_email`
 
 **Response:**
 ```json
@@ -234,7 +309,7 @@ Re-checks all domains and sends alerts.
   "checked": 3,
   "results": [
     { "domain": "example.com", "daysRemaining": 45, "status": "ok" },
-    { "domain": "broken.com", "status": "error" }
+    { "domain": "internal.corp", "status": "error" }
   ]
 }
 ```
@@ -247,7 +322,7 @@ Uses Node.js built-in `tls` module. No external dependencies.
 
 **Process:**
 1. Open TLS socket to `domain:443`
-2. Read `getPeerCertificate()` — extracts `valid_to` and `valid_from`
+2. Read `getPeerCertificate()` — extracts `valid_to`
 3. Calculate `daysRemaining` as `ceil((expiryDate - now) / 86400000)`
 4. Timeout: 10 seconds; on error or timeout → returns `null`
 
@@ -257,7 +332,7 @@ Uses Node.js built-in `tls` module. No external dependencies.
 
 **Provider:** Resend
 **From address:** `CertWatch <onboarding@resend.dev>`
-**To:** `tinysunmoon@gmail.com` (configurable via `ALERT_EMAIL` env var)
+**To:** Per-domain `alert_email` — no global default
 
 ### Alert Thresholds
 
@@ -269,10 +344,10 @@ ALERT_THRESHOLDS = [30, 14, 7]
 
 | Trigger | Condition |
 |---------|-----------|
-| **On add** | `days_remaining < 7` OR `days_remaining` is exactly 30, 14, or 7 |
+| **On add** | `days_remaining < 7` OR exactly 30, 14, or 7 |
 | **Daily cron / Check Now** | `days_remaining` is exactly 30, 14, or 7 |
 
-The daily cron uses exact matches only to avoid sending repeated emails every day. The "on add" check uses `shouldAlert()` which also catches anything already below 7 days — so a domain with 4 days left gets an immediate alert the moment it's added.
+The daily cron uses exact matches only to avoid sending repeated emails every day. The on-add check also catches anything already below 7 days.
 
 ### Email subject format
 
@@ -288,7 +363,7 @@ The daily cron uses exact matches only to avoid sending repeated emails every da
 
 ### Vercel Setup
 1. Import `tinysunmoon/certwatch` from GitHub on Vercel
-2. Add all four environment variables in Vercel project settings
+2. Add the three environment variables in Vercel project settings
 3. Deploy — Vercel auto-deploys on every push to `main`
 4. Cron job activates automatically from `vercel.json`
 
@@ -301,8 +376,8 @@ Cron jobs require at least the **Hobby** plan on Vercel (free tier supports 1 cr
 
 | Limitation | Detail |
 |-----------|--------|
-| No auth | Single-user tool, no login required |
-| No dedup on alerts | If a domain stays at exactly 7 days for multiple cron runs (e.g. timezone mismatch), it may send duplicate emails |
-| Private/internal domains | TLS fetch only works for publicly reachable domains; use manual date entry for private certs |
+| No auth | Anyone with the URL can add or edit domains |
+| No dedup on alerts | If a domain stays at exactly 7 days across multiple cron runs (e.g. timezone mismatch), it may send duplicate emails |
+| Private/internal domains | TLS check only works for publicly reachable domains; manual expiry dates should be used for private certs and updated manually |
 | Node 18 | App runs on Node 18; Supabase JS warns about deprecation but works fine |
 | Resend from address | Free tier requires using `onboarding@resend.dev` as sender |
