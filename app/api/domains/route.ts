@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getCertExpiry } from '@/lib/cert';
 import { shouldAlert, sendAlertEmail } from '@/lib/email';
 
 export async function GET() {
@@ -16,24 +15,14 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const { domain, valid_from, expiry_date: manualExpiry, alert_email } = await req.json();
   if (!domain) return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
+  if (!valid_from) return NextResponse.json({ error: 'Valid From date is required' }, { status: 400 });
+  if (!manualExpiry) return NextResponse.json({ error: 'Expiry Date is required' }, { status: 400 });
+  if (!alert_email) return NextResponse.json({ error: 'Alert Email is required' }, { status: 400 });
 
-  // If manual expiry provided, use it; otherwise auto-fetch from cert
-  let expiryDate: string | null = manualExpiry ?? null;
-  let daysRemaining: number | null = null;
-  let lastChecked: string | null = null;
-
-  if (expiryDate) {
-    const expiry = new Date(expiryDate);
-    daysRemaining = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    lastChecked = new Date().toISOString();
-  } else {
-    const cert = await getCertExpiry(domain);
-    if (cert) {
-      expiryDate = cert.expiryDate.toISOString().split('T')[0];
-      daysRemaining = cert.daysRemaining;
-      lastChecked = new Date().toISOString();
-    }
-  }
+  const expiryDate: string = manualExpiry;
+  const expiry = new Date(expiryDate);
+  const daysRemaining = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const lastChecked = new Date().toISOString();
 
   const { data, error } = await supabase.from('domains').insert({
     domain,

@@ -144,7 +144,7 @@ export default function Home() {
               />
               <button
                 type="submit"
-                disabled={adding || !newDomain.trim()}
+                disabled={adding || !newDomain.trim() || !validFrom || !expiryDate || !alertEmail.trim()}
                 className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {adding ? 'Adding...' : '+ Add Domain'}
@@ -152,27 +152,29 @@ export default function Home() {
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Valid From <span className="text-gray-400">(optional)</span></label>
+                <label className="block text-xs text-gray-500 mb-1">Valid From</label>
                 <input
                   type="date"
                   value={validFrom}
                   onChange={(e) => setValidFrom(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={adding}
+                  required
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Expiry Date <span className="text-gray-400">(optional — auto-fetched if blank)</span></label>
+                <label className="block text-xs text-gray-500 mb-1">Expiry Date</label>
                 <input
                   type="date"
                   value={expiryDate}
                   onChange={(e) => setExpiryDate(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={adding}
+                  required
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Alert Email <span className="text-gray-400">(optional — uses default if blank)</span></label>
+                <label className="block text-xs text-gray-500 mb-1">Alert Email</label>
                 <input
                   type="email"
                   value={alertEmail}
@@ -180,6 +182,7 @@ export default function Home() {
                   placeholder="notify@example.com"
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={adding}
+                  required
                 />
               </div>
             </div>
