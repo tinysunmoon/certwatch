@@ -19,6 +19,10 @@ export async function POST(req: NextRequest) {
   if (!manualExpiry) return NextResponse.json({ error: 'Expiry Date is required' }, { status: 400 });
   if (!alert_email) return NextResponse.json({ error: 'Alert Email is required' }, { status: 400 });
 
+  // Duplicate detection
+  const { data: existing } = await supabase.from('domains').select('id').eq('domain', domain.trim().toLowerCase()).single();
+  if (existing) return NextResponse.json({ error: `${domain} is already being tracked` }, { status: 409 });
+
   const expiryDate: string = manualExpiry;
   const expiry = new Date(expiryDate);
   const daysRemaining = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));

@@ -8,7 +8,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const { valid_from, expiry_date, alert_email } = await req.json();
+  const { valid_from, expiry_date, alert_email, renewal_requested, notes } = await req.json();
 
   const updates: Record<string, unknown> = {};
   if (valid_from !== undefined) updates.valid_from = valid_from || null;
@@ -20,6 +20,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
   }
   if (alert_email !== undefined) updates.alert_email = alert_email || null;
+  if (renewal_requested !== undefined) updates.renewal_requested = renewal_requested;
+  if (notes !== undefined) updates.notes = notes || null;
 
   const { data, error } = await supabase
     .from('domains')

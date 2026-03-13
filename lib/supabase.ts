@@ -13,5 +13,8 @@ export type Domain = {
   days_remaining: number | null;
   last_checked: string | null;
   alert_email: string | null;
+  renewal_requested: boolean;
+  notes: string | null;
+  check_error: string | null;
   created_at: string;
 };
