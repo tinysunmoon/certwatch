@@ -12,5 +12,6 @@ export type Domain = {
   expiry_date: string | null;
   days_remaining: number | null;
   last_checked: string | null;
+  alert_email: string | null;
   created_at: string;
 };

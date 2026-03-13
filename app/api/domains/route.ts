@@ -14,7 +14,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { domain, valid_from, expiry_date: manualExpiry } = await req.json();
+  const { domain, valid_from, expiry_date: manualExpiry, alert_email } = await req.json();
   if (!domain) return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
 
   // If manual expiry provided, use it; otherwise auto-fetch from cert
@@ -41,13 +41,14 @@ export async function POST(req: NextRequest) {
     expiry_date: expiryDate,
     days_remaining: daysRemaining,
     last_checked: lastChecked,
+    alert_email: alert_email ?? null,
   }).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Immediately alert if cert is already at or below a threshold
   if (expiryDate && daysRemaining !== null && shouldAlert(daysRemaining)) {
-    await sendAlertEmail(domain, expiryDate, daysRemaining);
+    await sendAlertEmail(domain, expiryDate, daysRemaining, alert_email);
   }
 
   return NextResponse.json(data);

@@ -25,7 +25,7 @@ export async function POST() {
 
     // Send alert only at exact thresholds (avoids daily spam)
     if (ALERT_THRESHOLDS.includes(daysRemaining)) {
-      await sendAlertEmail(domain.domain, expiryDate.toISOString().split('T')[0], daysRemaining);
+      await sendAlertEmail(domain.domain, expiryDate.toISOString().split('T')[0], daysRemaining, domain.alert_email);
     }
 
     results.push({ domain: domain.domain, daysRemaining, status: 'ok' });

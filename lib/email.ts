@@ -13,13 +13,13 @@ export function shouldAlert(daysRemaining: number): boolean {
   return ALERT_THRESHOLDS.includes(daysRemaining) || daysRemaining < ALERT_THRESHOLDS[ALERT_THRESHOLDS.length - 1];
 }
 
-export async function sendAlertEmail(domain: string, expiryDate: string, daysRemaining: number) {
+export async function sendAlertEmail(domain: string, expiryDate: string, daysRemaining: number, recipientEmail?: string | null) {
   const urgency = daysRemaining <= 0 ? '🚨 EXPIRED' : daysRemaining <= 7 ? '🔴 Critical' : '⚠️ Warning';
   const expiry = new Date(expiryDate);
 
   await resend.emails.send({
     from: 'CertWatch <onboarding@resend.dev>',
-    to: ALERT_EMAIL,
+    to: recipientEmail || ALERT_EMAIL,
     subject: `${urgency}: SSL Certificate for ${domain} (${daysRemaining} days left)`,
     html: `
       <h2>SSL Certificate Expiry Alert</h2>
