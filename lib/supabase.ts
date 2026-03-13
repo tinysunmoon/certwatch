@@ -8,6 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export type Domain = {
   id: string;
   domain: string;
+  valid_from: string | null;
   expiry_date: string | null;
   days_remaining: number | null;
   last_checked: string | null;

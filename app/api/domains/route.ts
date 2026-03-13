@@ -13,16 +13,33 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { domain } = await req.json();
+  const { domain, valid_from, expiry_date: manualExpiry } = await req.json();
   if (!domain) return NextResponse.json({ error: 'Domain is required' }, { status: 400 });
 
-  const cert = await getCertExpiry(domain);
+  // If manual expiry provided, use it; otherwise auto-fetch from cert
+  let expiryDate: string | null = manualExpiry ?? null;
+  let daysRemaining: number | null = null;
+  let lastChecked: string | null = null;
+
+  if (expiryDate) {
+    const expiry = new Date(expiryDate);
+    daysRemaining = Math.ceil((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    lastChecked = new Date().toISOString();
+  } else {
+    const cert = await getCertExpiry(domain);
+    if (cert) {
+      expiryDate = cert.expiryDate.toISOString().split('T')[0];
+      daysRemaining = cert.daysRemaining;
+      lastChecked = new Date().toISOString();
+    }
+  }
 
   const { data, error } = await supabase.from('domains').insert({
     domain,
-    expiry_date: cert?.expiryDate.toISOString().split('T')[0] ?? null,
-    days_remaining: cert?.daysRemaining ?? null,
-    last_checked: cert ? new Date().toISOString() : null,
+    valid_from: valid_from ?? null,
+    expiry_date: expiryDate,
+    days_remaining: daysRemaining,
+    last_checked: lastChecked,
   }).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

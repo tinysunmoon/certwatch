@@ -21,6 +21,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [checking, setChecking] = useState(false);
   const [newDomain, setNewDomain] = useState('');
+  const [validFrom, setValidFrom] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
   const [adding, setAdding] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -42,10 +44,16 @@ export default function Home() {
     const res = await fetch('/api/domains', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: newDomain.trim().toLowerCase() }),
+      body: JSON.stringify({
+        domain: newDomain.trim().toLowerCase(),
+        valid_from: validFrom || undefined,
+        expiry_date: expiryDate || undefined,
+      }),
     });
     if (res.ok) {
       setNewDomain('');
+      setValidFrom('');
+      setExpiryDate('');
       await loadDomains();
     } else {
       const data = await res.json();
@@ -84,22 +92,46 @@ export default function Home() {
         {/* Add Domain Form */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
           <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Add Domain</h2>
-          <form onSubmit={handleAdd} className="flex gap-3">
-            <input
-              type="text"
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              placeholder="e.g. example.com"
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={adding}
-            />
-            <button
-              type="submit"
-              disabled={adding || !newDomain.trim()}
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {adding ? 'Adding...' : '+ Add Domain'}
-            </button>
+          <form onSubmit={handleAdd} className="space-y-3">
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+                placeholder="Domain (e.g. example.com)"
+                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={adding}
+              />
+              <button
+                type="submit"
+                disabled={adding || !newDomain.trim()}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {adding ? 'Adding...' : '+ Add Domain'}
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Valid From <span className="text-gray-400">(optional — auto-fetched if blank)</span></label>
+                <input
+                  type="date"
+                  value={validFrom}
+                  onChange={(e) => setValidFrom(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={adding}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Expiry Date <span className="text-gray-400">(optional — auto-fetched if blank)</span></label>
+                <input
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={adding}
+                />
+              </div>
+            </div>
           </form>
           {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
         </div>
@@ -132,6 +164,7 @@ export default function Home() {
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Domain</th>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Valid From</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Expiry Date</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Days Left</th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
@@ -143,6 +176,7 @@ export default function Home() {
                   {domains.map((d) => (
                     <tr key={d.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 font-medium text-gray-900">{d.domain}</td>
+                      <td className="px-6 py-4 text-gray-600">{formatDate(d.valid_from)}</td>
                       <td className="px-6 py-4 text-gray-600">{formatDate(d.expiry_date)}</td>
                       <td className="px-6 py-4 text-gray-600">{d.days_remaining !== null ? `${d.days_remaining}d` : '—'}</td>
                       <td className="px-6 py-4"><StatusBadge days={d.days_remaining} /></td>
